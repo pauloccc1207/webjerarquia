@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modelo Multiplicativo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .input-group input {
+            padding: 5px;
+            width: 100px;
+        }
+        #result {
+            margin-top: 20px;
+        }
+        table {
+            width: 70%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: center;
+        }
+        .good {
+            background-color: #ccffcc; /* Verde claro */
+        }
+        .regular {
+            background-color: #ffffcc; /* Amarillo */
+        }
+        .bad {
+            background-color: #ffcccc; /* Rojo claro */
+        }
+        #ojivaChartContainer {
+            margin-top: 20px;
+            width: 100%;
+            height: 600px; /* Alto fijo */
+            overflow: auto; /* Barra de desplazamiento si es necesario */
+        }
+        #ojivaChart {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Modelo Multiplicativo</h1>
+    <p>Ingrese el número de variables (máximo 5):</p>
+    <input type="number" id="numVariables" min="1" max="5" onchange="generateInputs()">
+    
+    <div id="variableInputs"></div>
+    
+    <button onclick="calculate()">Calcular</button>
+    
+    <div id="result">
+        <h2>Distribución de Frecuencia</h2>
+        <table id="freqTable">
+            <thead>
+                <tr>
+                    <th>Resultado</th>
+                    <th>Frecuencia</th>
+                    <th>Frecuencia Relativa</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Aquí se llenarán los datos -->
+            </tbody>
+        </table>
+        
+        <h2>Distribución Acumulada</h2>
+        <table id="acumTable">
+            <thead>
+                <tr>
+                    <th>Resultado</th>
+                    <th>Frecuencia Acumulada</th>
+                    <th>Frecuencia Relativa Acumulada</th>
+                    <th>Clasificación</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Aquí se llenarán los datos -->
+            </tbody>
+        </table>
+
+        <h2>Gráfico de Ojiva</h2>
+        <div id="ojivaChartContainer">
+            <canvas id="ojivaChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let ojivaChartInstance = null; // Variable global para almacenar la instancia del gráfico
+
+        function generateInputs() {
+            const numVariables = document.getElementById('numVariables').value;
+            const container = document.getElementById('variableInputs');
+            container.innerHTML = ''; // Limpiar inputs anteriores
+
+            for (let i = 1; i <= numVariables; i++) {
+                const inputGroup = document.createElement('div');
+                inputGroup.className = 'input-group';
+
+                const label = document.createElement('label');
+                label.textContent = `Variable ${i}: Número de categorías (1-5)`;
+                inputGroup.appendChild(label);
+
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.min = '1';
+                input.max = '5';
+                input.required = true;
+                inputGroup.appendChild(input);
+
+                container.appendChild(inputGroup);
+            }
+        }
+
+        function calculate() {
+            const inputs = document.querySelectorAll('#variableInputs input');
+            const categories = Array.from(inputs).map(input => input.value);
+
+            fetch('/calculate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ categories }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    // Llenar la tabla de distribución de frecuencia
+                    const freqTable = document.querySelector('#freqTable tbody');
+                    freqTable.innerHTML = '';
+                    data.freq_dist.forEach(([value, freq, rel_freq]) => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td>${value}</td><td>${freq}</td><td>${rel_freq.toFixed(4)}</td>`;
+                        freqTable.appendChild(row);
+                    });
+
+                    // Llenar la tabla de distribución acumulada
+                    const acumTable = document.querySelector('#acumTable tbody');
+                    acumTable.innerHTML = '';
+                    data.acum_dist.forEach(([value, acum, acum_rel_freq]) => {
+                        const row = document.createElement('tr');
+                        let classification = '';
+                        let rowClass = '';
+                        if (acum_rel_freq <= 0.80) {
+                            classification = "Sectores Buenos";
+                            rowClass = "good";
+                        } else if (acum_rel_freq <= 0.95) {
+                            classification = "Sectores Regulares";
+                            rowClass = "regular";
+                        } else {
+                            classification = "Sectores Malos";
+                            rowClass = "bad";
+                        }
+                        row.innerHTML = `<td>${value}</td><td>${acum}</td><td>${acum_rel_freq.toFixed(4)}</td><td>${classification}</td>`;
+                        row.className = rowClass;
+                        acumTable.appendChild(row);
+                    });
+
+                    // Dibujar el gráfico de ojiva
+                    drawOjivaChart(data.acum_dist);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        function drawOjivaChart(acum_dist) {
+            const labels = acum_dist.map(([value]) => value); // Valores de los resultados (eje x)
+            const data = acum_dist.map(([_, __, acum_rel_freq]) => acum_rel_freq); // Frecuencia relativa acumulada (eje y)
+
+            const ctx = document.getElementById('ojivaChart').getContext('2d');
+
+            // Destruir el gráfico anterior si existe
+            if (ojivaChartInstance) {
+                ojivaChartInstance.destroy();
+            }
+
+            // Crear el nuevo gráfico
+            ojivaChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels, // Valores de los resultados en el eje x
+                    datasets: [{
+                        label: 'Frecuencia Relativa Acumulada',
+                        data: data, // Frecuencia relativa acumulada en el eje y
+                        borderColor: '#007bff',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        fill: true,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Resultados'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Frecuencia Relativa Acumulada'
+                            },
+                            min: 0, // Valor mínimo del eje y
+                            max: 1, // Valor máximo del eje y
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
