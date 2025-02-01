@@ -1,1 +1,1 @@
-web: gunicorn modelo:app
+web: gunicorn modelo:crear_app

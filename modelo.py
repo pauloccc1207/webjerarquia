@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify
 from itertools import product
 from collections import defaultdict
 
-def create_app():
+def crear_app():
     app = Flask(__name__)
 
     @app.route('/')
@@ -58,5 +58,5 @@ def create_app():
     return app
 
 if __name__ == '__main__':
-    app = create_app()
+    app = crear_app()
     app.run(debug=True)
