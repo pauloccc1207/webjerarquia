@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modelo Multiplicativo</title>
+    <title>Modelo Jerarquización de Sectores Hidráulicos</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 20px;
+            margin: 25px;
         }
         .input-group {
             margin-bottom: 10px;
@@ -54,21 +54,63 @@
             width: 100%;
             height: 100%;
         }
+        #evaluationSection {
+            margin-top: 30px;
+        }
+        #evaluationTable {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        #evaluationTable, th, td {
+            border: 1px solid black;
+        }
+        #evaluationTable th, #evaluationTable td {
+            padding: 8px;
+            text-align: center;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .result-box {
+            width: 150px;
+            height: 150px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px solid black;
+            border-radius: 10px;
+            font-size: 18px;
+            text-align: center;
+            padding: 10px;
+        }
+        .result-box.good {
+            background-color: #ccffcc; /* Verde claro */
+        }
+        .result-box.regular {
+            background-color: #ffffcc; /* Amarillo */
+        }
+        .result-box.bad {
+            background-color: #ffcccc; /* Rojo claro */
+        }
     </style>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
 </head>
 <body>
-    <h1>Modelo Multiplicativo</h1>
-    <p>Ingrese el número de variables (máximo 5):</p>
-    <input type="number" id="numVariables" min="1" max="5" onchange="generateInputs()">
+    <h1>Modelo de Jerarquización de Sectores Hidráulicos</h1>
+    <p>Ingrese el número de variables (máximo 8):</p>
+    <input type="number" id="numVariables" min="1" max="8" onchange="generateInputs()">
     
     <div id="variableInputs"></div>
     
     <button onclick="calculate()">Calcular</button>
     
     <div id="result">
-        <h2>Distribución de Frecuencia</h2>
+        <h2>Distribución de Frecuencias</h2>
         <table id="freqTable">
             <thead>
                 <tr>
@@ -97,42 +139,149 @@
             </tbody>
         </table>
 
-        <h2>Gráfico de Ojiva</h2>
+        <h2>Gráfico de Ojiva de todos los posibles resultados</h2>
         <div id="ojivaChartContainer">
             <canvas id="ojivaChart"></canvas>
         </div>
     </div>
 
+    <!-- Nueva sección de evaluación -->
+    <div id="evaluationSection">
+        <h2>Evaluación de un Sector Hidráulico</h2>
+        <table id="evaluationTable">
+            <thead>
+                <tr>
+                    <th>Nombre del Sector</th>
+                    <!-- Aquí se generarán los encabezados de las variables dinámicamente -->
+                    <th>Resultado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Aquí se generarán las filas de evaluación dinámicamente -->
+            </tbody>
+        </table>
+        <button onclick="evaluateSector()">Evaluar Sector</button>
+        <button onclick="resetEvaluation()">Finalizar Evaluación</button>
+    </div>
+
+    <button onclick="downloadPDF()">Descargar PDF</button>
+
     <script>
         let ojivaChartInstance = null; // Variable global para almacenar la instancia del gráfico
+        let acum_dist = []; // Variable global para almacenar la distribución acumulada
+        let categories = []; // Variable global para almacenar las categorías de las variables
+        let variableNames = []; // Variable global para almacenar los nombres de las variables
 
         function generateInputs() {
             const numVariables = document.getElementById('numVariables').value;
             const container = document.getElementById('variableInputs');
             container.innerHTML = ''; // Limpiar inputs anteriores
 
+            categories = []; // Reiniciar las categorías
+            variableNames = []; // Reiniciar los nombres de las variables
+
+            const table = document.createElement('table');
             for (let i = 1; i <= numVariables; i++) {
-                const inputGroup = document.createElement('div');
-                inputGroup.className = 'input-group';
+                const row = document.createElement('tr');
 
-                const label = document.createElement('label');
-                label.textContent = `Variable ${i}: Número de categorías (1-5)`;
-                inputGroup.appendChild(label);
+                const nameCell = document.createElement('td');
+                const nameLabel = document.createElement('label');
+                nameLabel.textContent = `Nombre de la Variable ${i} (opcional):`;
+                nameCell.appendChild(nameLabel);
 
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.className = 'variable-name';
+                nameCell.appendChild(nameInput);
+
+                const categoryCell = document.createElement('td');
+                const categoryLabel = document.createElement('label');
+                categoryLabel.textContent = `Variable ${i}: Número de categorías (1-7)`;
+                categoryCell.appendChild(categoryLabel);
+
+                const categoryInput = document.createElement('input');
+                categoryInput.type = 'number';
+                categoryInput.min = '1';
+                categoryInput.max = '7';
+                categoryInput.required = true;
+                categoryCell.appendChild(categoryInput);
+
+                row.appendChild(nameCell);
+                row.appendChild(categoryCell);
+                table.appendChild(row);
+            }
+            container.appendChild(table);
+
+            // Generar los casilleros de evaluación
+            generateEvaluationInputs(numVariables);
+        }
+
+        function generateEvaluationInputs(numVariables) {
+            const evaluationTable = document.getElementById('evaluationTable');
+            const thead = evaluationTable.querySelector('thead tr');
+            const tbody = evaluationTable.querySelector('tbody');
+
+            // Limpiar encabezados y filas anteriores
+            thead.innerHTML = '<th>Nombre del Sector</th>';
+            tbody.innerHTML = '';
+
+            // Generar encabezados de las variables
+            for (let i = 1; i <= numVariables; i++) {
+                const th = document.createElement('th');
+                th.textContent = `Variable ${i}`;
+                thead.appendChild(th);
+            }
+
+            // Agregar encabezado para el resultado
+            const resultTh = document.createElement('th');
+            resultTh.textContent = 'Resultado';
+            thead.appendChild(resultTh);
+
+            // Generar la primera fila de evaluación
+            addEvaluationRow();
+        }
+
+        function addEvaluationRow() {
+            const evaluationTable = document.getElementById('evaluationTable');
+            const tbody = evaluationTable.querySelector('tbody');
+            const numVariables = document.getElementById('numVariables').value;
+
+            const row = document.createElement('tr');
+
+            // Celda para el nombre del sector
+            const sectorNameCell = document.createElement('td');
+            const sectorNameInput = document.createElement('input');
+            sectorNameInput.type = 'text';
+            sectorNameInput.className = 'sector-name';
+            sectorNameCell.appendChild(sectorNameInput);
+            row.appendChild(sectorNameCell);
+
+            // Celdas para las variables
+            for (let i = 1; i <= numVariables; i++) {
+                const cell = document.createElement('td');
                 const input = document.createElement('input');
                 input.type = 'number';
                 input.min = '1';
-                input.max = '5';
+                input.max = '7';
                 input.required = true;
-                inputGroup.appendChild(input);
-
-                container.appendChild(inputGroup);
+                cell.appendChild(input);
+                row.appendChild(cell);
             }
+
+            // Celda para el resultado
+            const resultCell = document.createElement('td');
+            resultCell.className = 'result-cell';
+            row.appendChild(resultCell);
+
+            tbody.appendChild(row);
         }
 
         function calculate() {
-            const inputs = document.querySelectorAll('#variableInputs input');
-            const categories = Array.from(inputs).map(input => input.value);
+            const inputs = document.querySelectorAll('#variableInputs input[type="number"]');
+            categories = Array.from(inputs).map(input => input.value);
+
+            const nameInputs = document.querySelectorAll('#variableInputs input.variable-name');
+            variableNames = Array.from(nameInputs).map(input => input.value || `Variable ${Array.from(nameInputs).indexOf(input) + 1}`);
 
             fetch('/calculate', {
                 method: 'POST',
@@ -163,13 +312,13 @@
                         let classification = '';
                         let rowClass = '';
                         if (acum_rel_freq <= 0.80) {
-                            classification = "Sectores Buenos";
+                            classification = "Sector Bueno";
                             rowClass = "good";
                         } else if (acum_rel_freq <= 0.95) {
-                            classification = "Sectores Regulares";
+                            classification = "Sector Regular";
                             rowClass = "regular";
                         } else {
-                            classification = "Sectores Malos";
+                            classification = "Sector Malo";
                             rowClass = "bad";
                         }
                         row.innerHTML = `<td>${value}</td><td>${acum}</td><td>${acum_rel_freq.toFixed(4)}</td><td>${classification}</td>`;
@@ -177,13 +326,29 @@
                         acumTable.appendChild(row);
                     });
 
+                    // Guardar la distribución acumulada para usarla en la evaluación
+                    acum_dist = data.acum_dist;
+
                     // Dibujar el gráfico de ojiva
                     drawOjivaChart(data.acum_dist);
+
+                    // Actualizar los encabezados de evaluación con los nombres de las variables y categorías máximas
+                    updateEvaluationHeaders();
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
             });
+        }
+
+        function updateEvaluationHeaders() {
+            const evaluationTable = document.getElementById('evaluationTable');
+            const thead = evaluationTable.querySelector('thead tr');
+
+            // Actualizar los encabezados de las variables con los nombres ingresados y categorías máximas
+            for (let i = 1; i <= variableNames.length; i++) {
+                thead.children[i].textContent = `${variableNames[i - 1]} (Máx: ${categories[i - 1]})`;
+            }
         }
 
         function drawOjivaChart(acum_dist) {
@@ -231,6 +396,96 @@
                     }
                 }
             });
+        }
+
+        function evaluateSector() {
+            const evaluationTable = document.getElementById('evaluationTable');
+            const rows = evaluationTable.querySelectorAll('tbody tr');
+            const lastRow = rows[rows.length - 1];
+            const inputs = lastRow.querySelectorAll('input[type="number"]');
+            const values = Array.from(inputs).map(input => parseInt(input.value));
+            const sectorName = lastRow.querySelector('.sector-name').value || 'Sector sin nombre';
+
+            // Validar los valores ingresados
+            const errors = [];
+            values.forEach((value, index) => {
+                if (value > categories[index]) {
+                    errors.push(`La variable ${index + 1} tiene un valor mayor al permitido (Máx: ${categories[index]}).`);
+                }
+            });
+
+            if (errors.length > 0) {
+                // Mostrar mensajes de error
+                const resultCell = lastRow.querySelector('.result-cell');
+                resultCell.innerHTML = `<div class="error">${errors.join('<br>')}</div>`;
+                return; // Detener la evaluación si hay errores
+            }
+
+            // Calcular el producto de los valores
+            const result = values.reduce((acc, val) => acc * val, 1);
+
+            // Buscar la clasificación en la distribución acumulada
+            const classification = acum_dist.find(([value]) => value === result);
+            const resultCell = lastRow.querySelector('.result-cell');
+            if (classification) {
+                const [_, __, acum_rel_freq] = classification;
+                let resultText = '';
+                let resultClass = '';
+                if (acum_rel_freq <= 0.80) {
+                    resultText = "Sector Bueno";
+                    resultClass = "good";
+                } else if (acum_rel_freq <= 0.95) {
+                    resultText = "Sector Regular";
+                    resultClass = "regular";
+                } else {
+                    resultText = "Sector Malo";
+                    resultClass = "bad";
+                }
+                resultCell.innerHTML = `
+                    <div class="result-box ${resultClass}">
+                        <strong>${sectorName}</strong><br>
+                        Resultado: ${result}<br>
+                        Clasificación: ${resultText}
+                    </div>
+                `;
+            } else {
+                resultCell.innerHTML = `
+                    <div class="error">Resultado no encontrado en la distribución acumulada.</div>
+                `;
+            }
+
+            // Generar una nueva fila para otra evaluación
+            addEvaluationRow();
+        }
+
+        function resetEvaluation() {
+            if (confirm('¿Está seguro de que desea finalizar la evaluación y resetear el sistema?')) {
+                document.getElementById('numVariables').value = '';
+                document.getElementById('variableInputs').innerHTML = '';
+                document.getElementById('result').innerHTML = '';
+                document.getElementById('evaluationTable').querySelector('tbody').innerHTML = '';
+                ojivaChartInstance = null;
+                acum_dist = [];
+                categories = [];
+                variableNames = [];
+            }
+        }
+
+        function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            doc.text('Modelo de Jerarquización de Sectores Hidráulicos', 10, 10);
+
+            // Agregar contenido del resultado
+            const resultContent = document.getElementById('result').innerHTML;
+            doc.fromHTML(resultContent, 10, 20);
+
+            // Agregar contenido de la evaluación
+            const evaluationContent = document.getElementById('evaluationSection').innerHTML;
+            doc.fromHTML(evaluationContent, 10, 60);
+
+            doc.save('evaluacion_sectores_hidraulicos.pdf');
         }
     </script>
 </body>
