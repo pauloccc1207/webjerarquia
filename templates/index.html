@@ -99,6 +99,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- jsPDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <!-- html2canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
     <h1>Modelo de Jerarquización de Sectores Hidráulicos</h1>
@@ -471,20 +473,36 @@
             }
         }
 
-        function downloadPDF() {
+        async function downloadPDF() {
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
+            const doc = new jsPDF('p', 'mm', 'a4'); // Crear un PDF en formato A4
 
-            doc.text('Modelo de Jerarquización de Sectores Hidráulicos', 10, 10);
+            // Título del PDF
+            doc.setFontSize(18);
+            doc.text('Modelo de Jerarquización de Sectores Hidráulicos', 10, 20);
 
-            // Agregar contenido del resultado
-            const resultContent = document.getElementById('result').innerHTML;
-            doc.fromHTML(resultContent, 10, 20);
+            // Convertir el contenido de la sección de resultados a imagen
+            await html2canvas(document.getElementById('result')).then(canvas => {
+                const imgData = canvas.toDataURL('image/png');
+                const imgWidth = 190; // Ancho de la imagen en el PDF
+                const imgHeight = (canvas.height * imgWidth) / canvas.width; // Calcular alto proporcional
+                doc.addImage(imgData, 'PNG', 10, 30, imgWidth, imgHeight);
+            });
 
-            // Agregar contenido de la evaluación
-            const evaluationContent = document.getElementById('evaluationSection').innerHTML;
-            doc.fromHTML(evaluationContent, 10, 60);
+            // Agregar una nueva página para la sección de evaluación
+            doc.addPage();
+            doc.setFontSize(18);
+            doc.text('Evaluación de Sectores Hidráulicos', 10, 20);
 
+            // Convertir el contenido de la sección de evaluación a imagen
+            await html2canvas(document.getElementById('evaluationSection')).then(canvas => {
+                const imgData = canvas.toDataURL('image/png');
+                const imgWidth = 190; // Ancho de la imagen en el PDF
+                const imgHeight = (canvas.height * imgWidth) / canvas.width; // Calcular alto proporcional
+                doc.addImage(imgData, 'PNG', 10, 30, imgWidth, imgHeight);
+            });
+
+            // Guardar el PDF
             doc.save('evaluacion_sectores_hidraulicos.pdf');
         }
     </script>
